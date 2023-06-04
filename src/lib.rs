@@ -6,7 +6,7 @@ use std::cell::{Cell, RefCell, UnsafeCell};
 use std::iter::Filter;
 use std::slice::{Iter, IterMut};
 use wasm4::*;
-use crate::State::{Game, Menu};
+use crate::State::{Game, Lose, Menu};
 
 #[rustfmt::skip]
 const SMILEY: [u8; 8] = [
@@ -30,10 +30,12 @@ fn update() {
     let state = match unsafe { STATE } {
         Menu(state) => update_menu(state, gamepad, last_gamepad),
         Game(state) => update_game(state, gamepad, last_gamepad),
+        Lose(state) => update_lose(state, gamepad, last_gamepad),
     };
     match state {
         Menu(state) => render_menu(state),
         Game(state) => render_game(state),
+        Lose(state) => render_lose(state),
     }
 
     unsafe { STATE = state };
@@ -44,6 +46,7 @@ fn update() {
 enum State {
     Menu(MenuState),
     Game(GameState),
+    Lose(LoseState)
 }
 
 #[derive(Copy, Clone)]
@@ -88,6 +91,7 @@ struct GameState {
     player_y: u8,
     player_dx: i8,
     player_dy: i8,
+    player_health: u8,
     time: u32,
     entities: [Entity; 64],
 }
@@ -98,6 +102,7 @@ fn create_game_state() -> GameState {
         player_y: 0,
         player_dx: 0,
         player_dy: 0,
+        player_health: 3,
         time: 0,
         entities: [EMPTY_ENTITY; 64],
     };
@@ -146,9 +151,15 @@ const EMPTY_ENTITY: Entity = Entity {
     entity_type: EntityType::None,
 };
 
+enum GameEvent {
+    PlayerHurt,
+    PowerUp
+}
+
 struct ChangeRequests<'a> {
     entities_to_add: Vec<Entity>,
     entities_to_remove: Vec<& 'a Entity>,
+    events: Vec<GameEvent>,
 }
 
 impl GameState {
@@ -220,7 +231,7 @@ impl GameState {
         }
         new_state.entities = <[Entity; 64]>::try_from(new_entities).unwrap();
 
-        for ChangeRequests { entities_to_add, entities_to_remove } in change_requests {
+        for ChangeRequests { entities_to_add, entities_to_remove, events } in change_requests {
             for entity in entities_to_remove {
                 for existing_entity in new_state.entities.iter_mut() {
                     if existing_entity == entity {
@@ -231,6 +242,12 @@ impl GameState {
             }
             for entity in entities_to_add {
                 new_state.add_entity(entity);
+            }
+            for event in events {
+                match event {
+                    GameEvent::PlayerHurt => new_state.player_health = new_state.player_health.saturating_sub(1),
+                    GameEvent::PowerUp => new_state.player_health = new_state.player_health.saturating_add(1)
+                };
             }
         }
         new_state
@@ -273,15 +290,20 @@ impl Entity {
         let mut change_requests = ChangeRequests {
             entities_to_add: Vec::new(),
             entities_to_remove: Vec::new(),
+            events: Vec::new(),
         };
         let mut new_entity = self.clone();
         new_entity.age += 1;
         match new_entity.entity_type {
             EntityType::None => {},
-            EntityType::Bullet {..} => {
+            EntityType::Bullet {player} => {
                 new_entity.update_movement();
                 if new_entity.age > 200 || entity_collides_with_wall(&new_entity) {
                     new_entity = EMPTY_ENTITY.clone();
+                }
+                if !player && collides_with_player(&new_entity, state_snapshot) {
+                    new_entity = EMPTY_ENTITY.clone();
+                    change_requests.events.push(GameEvent::PlayerHurt);
                 }
             },
             EntityType::BasicEnemy => {
@@ -323,7 +345,14 @@ fn update_game(state: GameState, gamepad: u8, last_gamepad: u8) -> State {
     new_state.update_player(gamepad, last_gamepad);
     new_state = new_state.with_updated_entities();
 
-    Game(new_state)
+    if new_state.player_health == 0 {
+        Lose(LoseState {
+            score: new_state.time,
+            pressed: false
+        })
+    } else {
+        Game(new_state)
+    }
 }
 
 fn render_entities(state: GameState) {
@@ -346,6 +375,38 @@ fn render_entities(state: GameState) {
 fn render_game(state: GameState) {
     unsafe { *DRAW_COLORS = 0x0004 }
     rect((state.player_x as i32 - 4), (state.player_y as i32 - 4), 8, 8);
+    text(format!("Health: {}", state.player_health).as_str(), 0, 0);
     render_entities(state);
 }
 
+#[derive(Copy, Clone)]
+struct LoseState {
+    score: u32,
+    pressed: bool,
+}
+
+fn update_lose(state: LoseState, gamepad: u8, last_gamepad: u8) -> State {
+    let mut new_state = state;
+    if state.pressed && gamepad & BUTTON_1 == 0 {
+        Menu(MenuState {
+            selected: 0,
+            pressed: false,
+        })
+    } else {
+        if gamepad & BUTTON_1 != 0 {
+            new_state.pressed = true;
+        }
+
+        Lose(new_state)
+    }
+}
+
+fn render_lose(state: LoseState) {
+    unsafe { *DRAW_COLORS = 0x0003 }
+    text("GAME OVER", 10, 10);
+    text(format!("Score: {}", state.score).as_str(), 10, 20);
+
+    unsafe { *DRAW_COLORS = if state.pressed { 0x0002 } else { 0x0004 } }
+    text("Press X to return", 10, 70);
+    text("to Main Menu", 10, 80);
+}
