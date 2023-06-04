@@ -30,7 +30,7 @@ pub fn update_menu(state: MenuState, gamepad: u8, last_gamepad: u8) -> State {
         new_state.pressed = true;
     } else if last_gamepad & BUTTON_1 != 0 {
         if new_state.selected == 0 {
-            return Game(GameState::new())
+            return Game(GameState::new(10))
         } else {
             panic!()
         }

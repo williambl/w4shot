@@ -11,6 +11,8 @@ pub struct GameState {
     player_dy: i8,
     player_health: u8,
     time: u32,
+    difficulty: u8,
+    entity_spawn_interval: u16,
     entities: [Entity; 64],
 }
 
@@ -56,7 +58,7 @@ struct ChangeRequests<'a> {
 }
 
 impl GameState {
-    pub fn new() -> Self {
+    pub fn new(difficulty: u8) -> Self {
         let mut state = Self {
             player_x: 0,
             player_y: 0,
@@ -64,20 +66,10 @@ impl GameState {
             player_dy: 0,
             player_health: 3,
             time: 0,
+            difficulty,
+            entity_spawn_interval: (600u16 - 5u16 * (difficulty as u16).saturating_pow(2)).clamp(1, 600),
             entities: [EMPTY_ENTITY; 64],
         };
-        for i in 0..8 {
-            state.add_entity(Entity {
-                x: (160f32*(i as f32/8f32)) as u8 - 4,
-                y: 60,
-                size: 8,
-                dx: 0,
-                dy: 0,
-                age: 0,
-                entity_type: EntityType::BasicEnemy,
-            });
-        }
-
         state
     }
 
@@ -137,6 +129,25 @@ impl GameState {
         }
     }
 
+    fn spawn_new_entities(&mut self) {
+        if self.time % self.entity_spawn_interval as u32 == 0 {
+            let random = self.get_random();
+            let enemy_count = (random % 6u32) as u8 + (6f32 * self.difficulty as f32 / 10f32) as u8;
+            let x_increment = 160u8/enemy_count;
+            for i in 0..enemy_count {
+                self.add_entity(Entity {
+                    x: i * x_increment,
+                    y: 10,
+                    size: 8,
+                    dx: 0,
+                    dy: 0,
+                    age: 0,
+                    entity_type: EntityType::BasicEnemy,
+                });
+            }
+        }
+    }
+
     fn with_updated_entities(&self) -> GameState {
         let self_clone = &self.clone();
         let mut new_state = self.clone();
@@ -172,8 +183,12 @@ impl GameState {
     }
 
     fn get_random(self) -> u32 {
-        (self.time * 15417) ^ (self.time << 31) ^ ((self.time * 123651) >> 7)
+        next_random(self.time)
     }
+}
+
+fn next_random(seed: u32) -> u32 {
+    (seed * 15417) ^ (seed << 31) ^ ((seed * 123651) >> 7)
 }
 
 fn entity_collides_with_wall(entity: &Entity) -> bool {
@@ -265,6 +280,7 @@ impl Entity {
 
 pub fn update_game(state: GameState, gamepad: u8, last_gamepad: u8) -> State {
     let mut new_state = state;
+    new_state.spawn_new_entities();
     new_state.time += 1;
     new_state.update_player(gamepad, last_gamepad);
     new_state = new_state.with_updated_entities();
