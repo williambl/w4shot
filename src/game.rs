@@ -30,10 +30,12 @@ struct Entity {
 #[derive(Copy, Clone, PartialEq, Debug)]
 enum EntityType {
     None,
-    Bullet{
+    Bullet {
         player: bool
     },
-    BasicEnemy,
+    BasicEnemy {
+        seed: u8,
+    },
 }
 
 const EMPTY_ENTITY: Entity = Entity {
@@ -131,7 +133,7 @@ impl GameState {
 
     fn spawn_new_entities(&mut self) {
         if self.time % self.entity_spawn_interval as u32 == 0 {
-            let random = self.get_random();
+            let mut random = self.get_random();
             let enemy_count = (random % 6u32) as u8 + (6f32 * self.difficulty as f32 / 10f32) as u8;
             let x_increment = 160u8/enemy_count;
             for i in 0..enemy_count {
@@ -142,8 +144,9 @@ impl GameState {
                     dx: 0,
                     dy: 0,
                     age: 0,
-                    entity_type: EntityType::BasicEnemy,
+                    entity_type: EntityType::BasicEnemy { seed: random as u8 },
                 });
+                random = next_random(random);
             }
         }
     }
@@ -245,11 +248,12 @@ impl Entity {
                     change_requests.events.push(GameEvent::PlayerHurt);
                 }
             },
-            EntityType::BasicEnemy => {
-                if new_entity.age % 60 == 0 {
-                    new_entity.dx = if state_snapshot.get_random() & 0x10 != 0 { 1 } else { -1 };
-                    new_entity.dy = if state_snapshot.get_random() & 0x01 != 0 { 1 } else { -1 };
-                } else if new_entity.age % 60 == 30 || entity_collides_with_wall(&new_entity) {
+            EntityType::BasicEnemy { seed } => {
+                let random = next_random(state_snapshot.get_random() ^ (new_entity.x as u32 * 651) ^ (new_entity.y as u32 * 474));
+                if (seed as u16 + new_entity.age) % 60 == 0 {
+                    new_entity.dx = if random & 0x10 != 0 { 1 } else { -1 };
+                    new_entity.dy = if random & 0x01 != 0 { 1 } else { -1 };
+                } else if (seed as u16 + new_entity.age) % 60 == 30 || entity_collides_with_wall(&new_entity) {
                     new_entity.dx = 0;
                     new_entity.dy = 0;
                 }
@@ -301,7 +305,7 @@ fn render_entities(state: GameState) {
             let half_size = (entity.size / 2) as i32;
             rect((entity.x as i32 - half_size), (entity.y as i32 - half_size), entity.size as u32, entity.size as u32);
         },
-        EntityType::BasicEnemy => {
+        EntityType::BasicEnemy {..} => {
             unsafe { *DRAW_COLORS = 0x0003 }
             let half_size = (entity.size / 2) as i32;
             rect((entity.x as i32 - half_size), (entity.y as i32 - half_size), entity.size as u32, entity.size as u32);
