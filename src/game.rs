@@ -1,7 +1,7 @@
 use crate::State;
 use crate::lose::LoseState;
 use crate::State::{Game, Lose};
-use crate::wasm4::{BUTTON_1, BUTTON_DOWN, BUTTON_LEFT, BUTTON_RIGHT, BUTTON_UP, DRAW_COLORS, rect, text};
+use crate::wasm4::{BUTTON_1, BUTTON_DOWN, BUTTON_LEFT, BUTTON_RIGHT, BUTTON_UP, DRAW_COLORS, rect, text, trace};
 
 #[derive(Copy, Clone)]
 pub struct GameState {
@@ -36,6 +36,7 @@ enum EntityType {
     },
     BasicEnemy {
         seed: u8,
+        aims: bool,
     },
 }
 
@@ -198,7 +199,7 @@ impl GameState {
                     dx: 0,
                     dy: 0,
                     age: 0,
-                    entity_type: EntityType::BasicEnemy { seed: random as u8 },
+                    entity_type: EntityType::BasicEnemy { seed: random as u8, aims: self.difficulty > 7 },
                 });
                 random = next_random(random);
             }
@@ -307,7 +308,7 @@ impl Entity {
                     change_requests.events.push(GameEvent::PlayerHurt);
                 }
             },
-            EntityType::BasicEnemy { seed } => {
+            EntityType::BasicEnemy { seed, aims } => {
                 let random = next_random(state_snapshot.get_random() ^ (new_entity.x as u32 * 651) ^ (new_entity.y as u32 * 474));
                 if (seed as u16 + new_entity.age) % 60 == 0 {
                     new_entity.dx = if random & 0x10 != 0 { 1 } else { -1 };
@@ -318,12 +319,17 @@ impl Entity {
                 }
                 new_entity.update_movement();
                 if (seed as u16 + new_entity.age) % 60 == 0 {
+                    let aim_x = if aims { state_snapshot.player_x as f32 - new_entity.x as f32 } else { 0f32 };
+                    let aim_y = if aims { state_snapshot.player_y as f32 - new_entity.y as f32 } else { 1f32 };
+                    let aim_length = (aim_x as f32 * aim_x as f32 + aim_y as f32 * aim_y as f32).sqrt();
+                    let dx = if aim_length == 0f32 { 0i8 } else { (2f32 * aim_x / aim_length) as i8 };
+                    let dy = if aim_length == 0f32 { 0i8 } else { (2f32 * aim_y / aim_length) as i8 };
                     change_requests.entities_to_add.push(Entity {
                         x: new_entity.x,
                         y: new_entity.y,
                         size: 1,
-                        dx: 0,
-                        dy: 1,
+                        dx,
+                        dy,
                         age: 0,
                         entity_type: EntityType::Bullet { player: false },
                     });
