@@ -182,18 +182,18 @@ fn entity_collides_with_wall(entity: &Entity) -> bool {
 
 fn collides(entity: &Entity, other_entity: &Entity) -> bool {
     entity.entity_type != EntityType::None && other_entity.entity_type != EntityType::None
-    && entity.x - entity.size/2 < other_entity.x + other_entity.size/2
-    && entity.x + entity.size/2 > other_entity.x - other_entity.size/2
-    && entity.y - entity.size/2 < other_entity.y + other_entity.size/2
-    && entity.y + entity.size/2 > other_entity.y - other_entity.size/2
+    && entity.x.saturating_sub(entity.size/2) < other_entity.x.saturating_add(other_entity.size/2)
+    && entity.x.saturating_add(entity.size/2) > other_entity.x.saturating_sub(other_entity.size/2)
+    && entity.y.saturating_sub(entity.size/2) < other_entity.y.saturating_add(other_entity.size/2)
+    && entity.y.saturating_add(entity.size/2) > other_entity.y.saturating_sub(other_entity.size/2)
 }
 
 fn collides_with_player(entity: &Entity, state: &GameState) -> bool {
     entity.entity_type != EntityType::None
-    && entity.x - entity.size/2 < state.player_x + 4
-    && entity.x + entity.size/2 > state.player_x - 4
-    && entity.y - entity.size/2 < state.player_y + 4
-    && entity.y + entity.size/2 > state.player_y - 4
+        && entity.x.saturating_sub(entity.size/2) < state.player_x.saturating_add(4)
+        && entity.x.saturating_add(entity.size/2) > state.player_x.saturating_sub(4)
+        && entity.y.saturating_sub(entity.size/2) < state.player_y.saturating_add(4)
+        && entity.y.saturating_add(entity.size/2) > state.player_y.saturating_sub(4)
 }
 
 impl Entity {
