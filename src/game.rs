@@ -2,7 +2,7 @@ use crate::State;
 use crate::lose::LoseState;
 use crate::sprites::{render_eye, render_powerup, render_ship};
 use crate::State::{Game, Lose};
-use crate::wasm4::{BUTTON_1, BUTTON_DOWN, BUTTON_LEFT, BUTTON_RIGHT, BUTTON_UP, DRAW_COLORS, rect, text, trace};
+use crate::wasm4::{BUTTON_1, BUTTON_DOWN, BUTTON_LEFT, BUTTON_RIGHT, BUTTON_UP, DRAW_COLORS, rect, text, tone, trace};
 
 #[derive(Copy, Clone)]
 pub struct GameState {
@@ -128,6 +128,7 @@ impl GameState {
             match self.player_health.min(3) {
                 1 => {
                     if self.time % 30 == 0 {
+                        shoot_sound();
                         self.add_entity(Entity {
                             x: self.player_x,
                             y: self.player_y.saturating_sub(3),
@@ -141,6 +142,7 @@ impl GameState {
                 }
                 2 => {
                     if self.time % 10 == 0 {
+                        shoot_sound();
                         self.add_entity(Entity {
                             x: self.player_x,
                             y: self.player_y.saturating_sub(3),
@@ -154,6 +156,7 @@ impl GameState {
                 }
                 3 => {
                     if self.time % 10 == 0 {
+                        shoot_sound();
                         self.add_entity(Entity {
                             x: self.player_x,
                             y: self.player_y.saturating_sub(3),
@@ -247,11 +250,15 @@ impl GameState {
                 match event {
                     GameEvent::PlayerHurt => {
                         if new_state.player_hurt_cooldown == 0 {
+                            hurt_sound();
                             new_state.player_health = new_state.player_health.saturating_sub(1);
                             new_state.player_hurt_cooldown = 90;
                         }
                     },
-                    GameEvent::PowerUp => new_state.player_health = new_state.player_health.saturating_add(1)
+                    GameEvent::PowerUp => {
+                        power_up_sound();
+                        new_state.player_health = new_state.player_health.saturating_add(1);
+                    }
                 };
             }
         }
@@ -352,6 +359,7 @@ impl Entity {
                 }
                 for entity in state_snapshot.entities.iter() {
                     if (entity.entity_type == EntityType::Bullet { player: true }) && collides(&new_entity, entity) {
+                        hit_enemy_sound();
                         new_entity = EMPTY_ENTITY.clone();
                         change_requests.entities_to_remove.push(entity);
                         break;
@@ -422,4 +430,20 @@ pub fn render_game(state: GameState) {
         render_ship((state.player_x as i32 - 4), (state.player_y as i32 - 4));
     }
     text(format!("Health: {}", state.player_health).as_str(), 0, 0);
+}
+
+fn shoot_sound() {
+    tone((220 << 16) | 270, 8 << 16, 50, 3);
+}
+
+fn hit_enemy_sound() {
+    tone((70 << 16) | 90, (8 << 16) | (8 << 24), 100, 2);
+}
+
+fn hurt_sound() {
+    tone((70 << 16) | 110, (8 << 16) | (8 << 24) | 10, 100, 0);
+}
+
+fn power_up_sound() {
+    tone((870 << 16) | 600, (8 << 16) | 12, 100, 2);
 }
