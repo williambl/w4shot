@@ -1,6 +1,6 @@
 use crate::State;
 use crate::lose::LoseState;
-use crate::sprites::{render_eye, render_ship};
+use crate::sprites::{render_eye, render_powerup, render_ship};
 use crate::State::{Game, Lose};
 use crate::wasm4::{BUTTON_1, BUTTON_DOWN, BUTTON_LEFT, BUTTON_RIGHT, BUTTON_UP, DRAW_COLORS, rect, text, trace};
 
@@ -39,6 +39,7 @@ enum EntityType {
         seed: u8,
         aims: bool,
     },
+    PowerUp,
 }
 
 const EMPTY_ENTITY: Entity = Entity {
@@ -204,6 +205,17 @@ impl GameState {
                 });
                 random = next_random(random);
             }
+            if self.time % 600u32 == 0 {
+                self.add_entity(Entity {
+                    x: (random as u8 % 140u8) + 10u8,
+                    y: ((random >> 8) as u8 % 100u8) + 10u8,
+                    size: 8,
+                    dx: ((random >> 16) as u8 % 3u8) as i8 - 1,
+                    dy: ((random >> 24) as u8 % 3u8) as i8 - 1,
+                    age: 0,
+                    entity_type: EntityType::PowerUp,
+                });
+            }
         }
     }
 
@@ -345,7 +357,23 @@ impl Entity {
                         break;
                     }
                 }
-            }
+            },
+            EntityType::PowerUp => {
+                if new_entity.x == 0 && new_entity.dx < 0 || new_entity.x == 160 && new_entity.dx > 0 {
+                    new_entity.dx = -new_entity.dx;
+                }
+                if new_entity.y == 0 && new_entity.dy < 0 || new_entity.y == 160 && new_entity.dy > 0 {
+                    new_entity.dy = -new_entity.dy;
+                }
+                new_entity.update_movement();
+                if new_entity.age > 900 {
+                    new_entity = EMPTY_ENTITY.clone();
+                }
+                if collides_with_player(&new_entity, state_snapshot) {
+                    new_entity = EMPTY_ENTITY.clone();
+                    change_requests.events.push(GameEvent::PowerUp);
+                }
+            },
         }
         (new_entity, change_requests)
     }
@@ -378,7 +406,12 @@ fn render_entities(state: GameState) {
             unsafe { *DRAW_COLORS = 0x0432 }
             let half_size = (entity.size / 2) as i32;
             render_eye((entity.x as i32 - half_size), (entity.y as i32 - half_size));
-        }
+        },
+        EntityType::PowerUp => {
+            unsafe { *DRAW_COLORS = 0x0432 }
+            let half_size = (entity.size / 2) as i32;
+            render_powerup((entity.x as i32 - half_size), (entity.y as i32 - half_size));
+        },
     });
 }
 
