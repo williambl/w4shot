@@ -1,5 +1,6 @@
 use crate::State;
 use crate::lose::LoseState;
+use crate::sprites::{render_eye, render_ship};
 use crate::State::{Game, Lose};
 use crate::wasm4::{BUTTON_1, BUTTON_DOWN, BUTTON_LEFT, BUTTON_RIGHT, BUTTON_UP, DRAW_COLORS, rect, text, trace};
 
@@ -374,18 +375,18 @@ fn render_entities(state: GameState) {
             rect((entity.x as i32 - half_size), (entity.y as i32 - half_size), entity.size as u32, entity.size as u32);
         },
         EntityType::BasicEnemy {..} => {
-            unsafe { *DRAW_COLORS = 0x0003 }
+            unsafe { *DRAW_COLORS = 0x0432 }
             let half_size = (entity.size / 2) as i32;
-            rect((entity.x as i32 - half_size), (entity.y as i32 - half_size), entity.size as u32, entity.size as u32);
+            render_eye((entity.x as i32 - half_size), (entity.y as i32 - half_size));
         }
     });
 }
 
 pub fn render_game(state: GameState) {
     render_entities(state);
-    unsafe { *DRAW_COLORS = 0x0004 }
+    unsafe { *DRAW_COLORS = 0x2430 }
     if state.player_hurt_cooldown % 2 == 0 {
-        rect((state.player_x as i32 - 4), (state.player_y as i32 - 4), 8, 8);
+        render_ship((state.player_x as i32 - 4), (state.player_y as i32 - 4));
     }
     text(format!("Health: {}", state.player_health).as_str(), 0, 0);
 }

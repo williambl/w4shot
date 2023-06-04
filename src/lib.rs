@@ -4,6 +4,7 @@ mod wasm4;
 mod menu;
 mod game;
 mod lose;
+mod sprites;
 
 use std::cell::{Cell, RefCell, UnsafeCell};
 use std::iter::Filter;
