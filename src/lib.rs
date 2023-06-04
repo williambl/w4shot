@@ -1,6 +1,10 @@
 #[cfg(feature = "buddy-alloc")]
 mod alloc;
 mod wasm4;
+
+use std::cell::{Cell, RefCell, UnsafeCell};
+use std::iter::Filter;
+use std::slice::{Iter, IterMut};
 use wasm4::*;
 use crate::State::{Game, Menu};
 
@@ -89,40 +93,63 @@ struct GameState {
 }
 
 fn create_game_state() -> GameState {
-    GameState {
+    let mut state = GameState {
         player_x: 0,
         player_y: 0,
         player_dx: 0,
         player_dy: 0,
         time: 0,
         entities: [EMPTY_ENTITY; 64],
+    };
+    for i in 0..8 {
+        state.add_entity(Entity {
+            x: (160f32*(i as f32/8f32)) as u8 - 4,
+            y: 60,
+            size: 8,
+            dx: 0,
+            dy: 0,
+            age: 0,
+            entity_type: EntityType::BasicEnemy,
+        });
     }
+
+    state
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 struct Entity {
     x: u8,
     y: u8,
+    size: u8,
     dx: i8,
     dy: i8,
     age: u16,
     entity_type: EntityType,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 enum EntityType {
     None,
-    Bullet,
+    Bullet{
+        player: bool
+    },
+    BasicEnemy,
 }
 
 const EMPTY_ENTITY: Entity = Entity {
     x: 0,
     y: 0,
+    size: 0,
     dx: 0,
     dy: 0,
     age: 0,
     entity_type: EntityType::None,
 };
+
+struct ChangeRequests<'a> {
+    entities_to_add: Vec<Entity>,
+    entities_to_remove: Vec<& 'a Entity>,
+}
 
 impl GameState {
     fn add_entity(&mut self, entity: Entity) -> bool {
@@ -172,27 +199,60 @@ impl GameState {
             self.add_entity(Entity {
                 x: self.player_x,
                 y: self.player_y.saturating_sub(3),
+                size: 1,
                 dx: 0,
                 dy: -3,
                 age: 0,
-                entity_type: EntityType::Bullet,
+                entity_type: EntityType::Bullet { player: true },
             });
         }
     }
 
-    fn update_entities(&mut self) {
-        self.entities = self.entities.map(|entity| {
-            if entity.entity_type == EntityType::None {
-                entity
-            } else {
-                entity.update()
+    fn with_updated_entities(&self) -> GameState {
+        let self_clone = &self.clone();
+        let mut new_state = self.clone();
+        let new_entities_and_change_requests: Vec<(Entity, ChangeRequests)> = new_state.entities.iter().map(|entity| entity.update(self_clone)).collect();
+        let mut new_entities: Vec<Entity> = Vec::new();
+        let mut change_requests: Vec<ChangeRequests> = Vec::new();
+        for (entity, change_request) in new_entities_and_change_requests {
+            new_entities.push(entity);
+            change_requests.push(change_request);
+        }
+        new_state.entities = <[Entity; 64]>::try_from(new_entities).unwrap();
+
+        for ChangeRequests { entities_to_add, entities_to_remove } in change_requests {
+            for entity in entities_to_remove {
+                for existing_entity in new_state.entities.iter_mut() {
+                    if existing_entity == entity {
+                        *existing_entity = EMPTY_ENTITY;
+                        break;
+                    }
+                }
             }
-        });
+            for entity in entities_to_add {
+                new_state.add_entity(entity);
+            }
+        }
+        new_state
+    }
+
+    fn get_random(self) -> u32 {
+        (self.time * 15417) ^ (self.time << 31) ^ ((self.time * 123651) >> 7)
     }
 }
 
-fn entity_collides_with_wall(entity: Entity) -> bool {
+fn entity_collides_with_wall(entity: &Entity) -> bool {
     entity.x == 0 && entity.dx < 0 || entity.x == 160 && entity.dx > 0 || entity.y == 0 && entity.dy < 0 || entity.y == 160 && entity.dy > 0
+}
+
+fn collides(entity: &Entity, other_entity: &Entity) -> bool {
+    entity.entity_type != EntityType::None && other_entity.entity_type != EntityType::None
+        && entity.x < other_entity.x + other_entity.size && entity.x + entity.size > other_entity.x && entity.y < other_entity.y + other_entity.size && entity.y + entity.size > other_entity.y
+}
+
+fn collides_with_player(entity: &Entity, state: &GameState) -> bool {
+    entity.entity_type != EntityType::None
+        && entity.x < state.player_x + 8 && entity.x + entity.size > state.player_x && entity.y < state.player_y + 8 && entity.y + entity.size > state.player_y
 }
 
 impl Entity {
@@ -209,18 +269,51 @@ impl Entity {
         }.clamp(0, 160);
     }
 
-    fn update(mut self) -> Entity {
-        self.age += 1;
-        match self.entity_type {
+    fn update(self, state_snapshot: &GameState) -> (Entity, ChangeRequests) {
+        let mut change_requests = ChangeRequests {
+            entities_to_add: Vec::new(),
+            entities_to_remove: Vec::new(),
+        };
+        let mut new_entity = self.clone();
+        new_entity.age += 1;
+        match new_entity.entity_type {
             EntityType::None => {},
-            EntityType::Bullet => {
-                self.update_movement();
-                if self.age > 60 || entity_collides_with_wall(self) {
-                    self.entity_type = EntityType::None;
+            EntityType::Bullet {..} => {
+                new_entity.update_movement();
+                if new_entity.age > 200 || entity_collides_with_wall(&new_entity) {
+                    new_entity = EMPTY_ENTITY.clone();
                 }
             },
+            EntityType::BasicEnemy => {
+                if new_entity.age % 60 == 0 {
+                    new_entity.dx = if state_snapshot.get_random() & 0x10 != 0 { 1 } else { -1 };
+                    new_entity.dy = if state_snapshot.get_random() & 0x01 != 0 { 1 } else { -1 };
+                } else if new_entity.age % 60 == 30 || entity_collides_with_wall(&new_entity) {
+                    new_entity.dx = 0;
+                    new_entity.dy = 0;
+                }
+                new_entity.update_movement();
+                if new_entity.age % 60 == 0 {
+                    change_requests.entities_to_add.push(Entity {
+                        x: new_entity.x,
+                        y: new_entity.y,
+                        size: 1,
+                        dx: 0,
+                        dy: 1,
+                        age: 0,
+                        entity_type: EntityType::Bullet { player: false },
+                    });
+                }
+                for entity in state_snapshot.entities.iter() {
+                    if (entity.entity_type == EntityType::Bullet { player: true }) && collides(&new_entity, entity) {
+                        new_entity = EMPTY_ENTITY.clone();
+                        change_requests.entities_to_remove.push(entity);
+                        break;
+                    }
+                }
+            }
         }
-        self
+        (new_entity, change_requests)
     }
 }
 
@@ -228,18 +321,25 @@ fn update_game(state: GameState, gamepad: u8, last_gamepad: u8) -> State {
     let mut new_state = state;
     new_state.time += 1;
     new_state.update_player(gamepad, last_gamepad);
-    new_state.update_entities();
+    new_state = new_state.with_updated_entities();
 
     Game(new_state)
 }
 
 fn render_entities(state: GameState) {
-    unsafe { *DRAW_COLORS = 0x0004 }
     state.entities.iter().for_each(|entity| match entity.entity_type {
         EntityType::None => { },
-        EntityType::Bullet => {
-            rect((entity.x as i32 - 1), (entity.y as i32 - 1), 2, 2);
+        EntityType::Bullet {..} => {
+            unsafe { *DRAW_COLORS = 0x0004 }
+            // draw rect of size entity.size
+            let half_size = (entity.size / 2) as i32;
+            rect((entity.x as i32 - half_size), (entity.y as i32 - half_size), entity.size as u32, entity.size as u32);
         },
+        EntityType::BasicEnemy => {
+            unsafe { *DRAW_COLORS = 0x0003 }
+            let half_size = (entity.size / 2) as i32;
+            rect((entity.x as i32 - half_size), (entity.y as i32 - half_size), entity.size as u32, entity.size as u32);
+        }
     });
 }
 
