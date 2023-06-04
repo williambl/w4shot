@@ -1,4 +1,5 @@
 use crate::game::GameState;
+use crate::sprites::{render_eye, render_powerup, render_ship};
 use crate::State;
 use crate::State::{Game, Menu};
 use crate::wasm4::{BUTTON_1, BUTTON_DOWN, BUTTON_UP, DRAW_COLORS, text};
@@ -91,4 +92,14 @@ pub fn render_menu(state: MenuState) {
     text("Difficulty: ", 10, 40);
     unsafe { *DRAW_COLORS = if state.selected == 1 { if state.pressed { 0x0002 } else { 0x0004 } } else { 0x0003 } }
     text(state.difficulty.to_str(), 17, 50);
+
+    unsafe { *DRAW_COLORS = 0x0003 }
+    text("The enemy:", 40, 80);
+    text("      You:", 40, 100);
+    text("  Powerup:", 40, 120);
+    unsafe { *DRAW_COLORS = 0x2430 }
+    render_ship(130, 100);
+    unsafe { *DRAW_COLORS = 0x0432 }
+    render_eye(130, 80);
+    render_powerup(130, 120);
 }
