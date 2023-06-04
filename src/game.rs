@@ -10,6 +10,7 @@ pub struct GameState {
     player_dx: i8,
     player_dy: i8,
     player_health: u8,
+    player_hurt_cooldown: u8,
     time: u32,
     difficulty: u8,
     entity_spawn_interval: u16,
@@ -67,6 +68,7 @@ impl GameState {
             player_dx: 0,
             player_dy: 0,
             player_health: 3,
+            player_hurt_cooldown: 0,
             time: 0,
             difficulty,
             entity_spawn_interval: (600u16 - 5u16 * (difficulty as u16).saturating_pow(2)).clamp(1, 600),
@@ -103,6 +105,7 @@ impl GameState {
     fn update_player(&mut self, gamepad: u8, last_gamepad: u8) {
         self.player_dx = 0;
         self.player_dy = 0;
+        self.player_hurt_cooldown = self.player_hurt_cooldown.saturating_sub(1);
 
         self.update_movement_from_gamepad(gamepad);
         self.update_movement_from_gamepad(last_gamepad);
@@ -118,16 +121,67 @@ impl GameState {
             self.player_y.saturating_add(self.player_dy as u8)
         }.clamp(0, 160);
 
-        if gamepad & BUTTON_1 & !(self.time % 20) as u8 != 0 {
-            self.add_entity(Entity {
-                x: self.player_x,
-                y: self.player_y.saturating_sub(3),
-                size: 1,
-                dx: 0,
-                dy: -3,
-                age: 0,
-                entity_type: EntityType::Bullet { player: true },
-            });
+        if gamepad & BUTTON_1 != 0 {
+            match self.player_health.min(3) {
+                1 => {
+                    if self.time % 30 == 0 {
+                        self.add_entity(Entity {
+                            x: self.player_x,
+                            y: self.player_y.saturating_sub(3),
+                            size: 1,
+                            dx: 0,
+                            dy: -3,
+                            age: 0,
+                            entity_type: EntityType::Bullet { player: true },
+                        });
+                    }
+                }
+                2 => {
+                    if self.time % 10 == 0 {
+                        self.add_entity(Entity {
+                            x: self.player_x,
+                            y: self.player_y.saturating_sub(3),
+                            size: 1,
+                            dx: 0,
+                            dy: -3,
+                            age: 0,
+                            entity_type: EntityType::Bullet { player: true },
+                        });
+                    }
+                }
+                3 => {
+                    if self.time % 10 == 0 {
+                        self.add_entity(Entity {
+                            x: self.player_x,
+                            y: self.player_y.saturating_sub(3),
+                            size: 1,
+                            dx: 0,
+                            dy: -3,
+                            age: 0,
+                            entity_type: EntityType::Bullet { player: true },
+                        });
+                        self.add_entity(Entity {
+                            x: self.player_x,
+                            y: self.player_y.saturating_sub(3),
+                            size: 1,
+                            dx: -1,
+                            dy: -3,
+                            age: 0,
+                            entity_type: EntityType::Bullet { player: true },
+                        });
+                        self.add_entity(Entity {
+                            x: self.player_x,
+                            y: self.player_y.saturating_sub(3),
+                            size: 1,
+                            dx: 1,
+                            dy: -3,
+                            age: 0,
+                            entity_type: EntityType::Bullet { player: true },
+                        });
+                    }
+                }
+                _ => {}
+            }
         }
     }
 
@@ -177,7 +231,12 @@ impl GameState {
             }
             for event in events {
                 match event {
-                    GameEvent::PlayerHurt => new_state.player_health = new_state.player_health.saturating_sub(1),
+                    GameEvent::PlayerHurt => {
+                        if new_state.player_hurt_cooldown == 0 {
+                            new_state.player_health = new_state.player_health.saturating_sub(1);
+                            new_state.player_hurt_cooldown = 90;
+                        }
+                    },
                     GameEvent::PowerUp => new_state.player_health = new_state.player_health.saturating_add(1)
                 };
             }
@@ -258,7 +317,7 @@ impl Entity {
                     new_entity.dy = 0;
                 }
                 new_entity.update_movement();
-                if new_entity.age % 60 == 0 {
+                if (seed as u16 + new_entity.age) % 60 == 0 {
                     change_requests.entities_to_add.push(Entity {
                         x: new_entity.x,
                         y: new_entity.y,
@@ -268,6 +327,9 @@ impl Entity {
                         age: 0,
                         entity_type: EntityType::Bullet { player: false },
                     });
+                    if collides_with_player(&new_entity, state_snapshot) {
+                        change_requests.events.push(GameEvent::PlayerHurt);
+                    }
                 }
                 for entity in state_snapshot.entities.iter() {
                     if (entity.entity_type == EntityType::Bullet { player: true }) && collides(&new_entity, entity) {
@@ -314,8 +376,10 @@ fn render_entities(state: GameState) {
 }
 
 pub fn render_game(state: GameState) {
-    unsafe { *DRAW_COLORS = 0x0004 }
-    rect((state.player_x as i32 - 4), (state.player_y as i32 - 4), 8, 8);
-    text(format!("Health: {}", state.player_health).as_str(), 0, 0);
     render_entities(state);
+    unsafe { *DRAW_COLORS = 0x0004 }
+    if state.player_hurt_cooldown % 2 == 0 {
+        rect((state.player_x as i32 - 4), (state.player_y as i32 - 4), 8, 8);
+    }
+    text(format!("Health: {}", state.player_health).as_str(), 0, 0);
 }
