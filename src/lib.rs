@@ -124,112 +124,111 @@ const EMPTY_ENTITY: Entity = Entity {
     entity_type: EntityType::None,
 };
 
-fn add_entity(mut state: GameState, entity: Entity) -> GameState {
-    for existing_entity in state.entities.iter_mut() {
-        if existing_entity.entity_type == EntityType::None {
-            *existing_entity = entity;
-            return state;
+impl GameState {
+    fn add_entity(&mut self, entity: Entity) -> bool {
+        for existing_entity in self.entities.iter_mut() {
+            if existing_entity.entity_type == EntityType::None {
+                *existing_entity = entity;
+                return true;
+            }
+        }
+        false
+    }
+
+    fn update_movement_from_gamepad(&mut self, gamepad: u8) {
+        if gamepad & BUTTON_UP != 0 {
+            self.player_dy -= 1;
+        }
+        if gamepad & BUTTON_DOWN != 0 {
+            self.player_dy += 1;
+        }
+        if gamepad & BUTTON_LEFT != 0 {
+            self.player_dx -= 1;
+        }
+        if gamepad & BUTTON_RIGHT != 0 {
+            self.player_dx += 1;
         }
     }
-    state
-}
 
-fn update_movement_from_gamepad(gamepad: u8, mut state: GameState) -> GameState {
-    if gamepad & BUTTON_UP != 0 {
-        state.player_dy -= 1;
+    fn update_player(&mut self, gamepad: u8, last_gamepad: u8) {
+        self.player_dx = 0;
+        self.player_dy = 0;
+
+        self.update_movement_from_gamepad(gamepad);
+        self.update_movement_from_gamepad(last_gamepad);
+
+        self.player_x = if self.player_dx < 0 {
+            self.player_x.saturating_sub(self.player_dx.saturating_abs() as u8)
+        } else {
+            self.player_x.saturating_add(self.player_dx as u8)
+        }.clamp(0, 160);
+        self.player_y = if self.player_dy < 0 {
+            self.player_y.saturating_sub(self.player_dy.saturating_abs() as u8)
+        } else {
+            self.player_y.saturating_add(self.player_dy as u8)
+        }.clamp(0, 160);
+
+        if gamepad & BUTTON_1 & !(self.time % 20) as u8 != 0 {
+            self.add_entity(Entity {
+                x: self.player_x,
+                y: self.player_y.saturating_sub(3),
+                dx: 0,
+                dy: -3,
+                age: 0,
+                entity_type: EntityType::Bullet,
+            });
+        }
     }
-    if gamepad & BUTTON_DOWN != 0 {
-        state.player_dy += 1;
-    }
-    if gamepad & BUTTON_LEFT != 0 {
-        state.player_dx -= 1;
-    }
-    if gamepad & BUTTON_RIGHT != 0 {
-        state.player_dx += 1;
-    }
-    state
-}
 
-fn update_player(mut state: GameState, gamepad: u8, last_gamepad: u8) -> GameState {
-    state.player_dx = 0;
-    state.player_dy = 0;
-
-    state = update_movement_from_gamepad(gamepad, state);
-    state = update_movement_from_gamepad(last_gamepad, state);
-
-    state.player_x = if state.player_dx < 0 {
-        state.player_x.saturating_sub(state.player_dx.saturating_abs() as u8)
-    } else {
-        state.player_x.saturating_add(state.player_dx as u8)
-    }.clamp(0, 160);
-    state.player_y = if state.player_dy < 0 {
-        state.player_y.saturating_sub(state.player_dy.saturating_abs() as u8)
-    } else {
-        state.player_y.saturating_add(state.player_dy as u8)
-    }.clamp(0, 160);
-
-    if gamepad & BUTTON_1 & !(state.time % 20) as u8 != 0 {
-        state = add_entity(state, Entity {
-            x: state.player_x,
-            y: state.player_y.saturating_sub(3),
-            dx: 0,
-            dy: -3,
-            age: 0,
-            entity_type: EntityType::Bullet,
+    fn update_entities(&mut self) {
+        self.entities = self.entities.map(|entity| {
+            if entity.entity_type == EntityType::None {
+                entity
+            } else {
+                entity.update()
+            }
         });
     }
-
-    state
 }
 
 fn entity_collides_with_wall(entity: Entity) -> bool {
     entity.x == 0 && entity.dx < 0 || entity.x == 160 && entity.dx > 0 || entity.y == 0 && entity.dy < 0 || entity.y == 160 && entity.dy > 0
 }
 
-fn update_entity_movement(mut entity: Entity) -> Entity {
-    entity.x = if entity.dx < 0 {
-        entity.x.saturating_sub(entity.dx.saturating_abs() as u8)
-    } else {
-        entity.x.saturating_add(entity.dx as u8)
-    }.clamp(0, 160);
-    entity.y = if entity.dy < 0 {
-        entity.y.saturating_sub(entity.dy.saturating_abs() as u8)
-    } else {
-        entity.y.saturating_add(entity.dy as u8)
-    }.clamp(0, 160);
-    entity
-}
-
-fn update_entity(mut entity: Entity) -> Entity {
-    entity.age += 1;
-    match entity.entity_type {
-        EntityType::None => { },
-        EntityType::Bullet => {
-            if entity.age > 60 || entity_collides_with_wall(entity) {
-                entity.entity_type = EntityType::None;
-            }
-        },
-    }
-    entity = update_entity_movement(entity);
-    entity
-}
-
-fn update_entities(mut state: GameState) -> GameState {
-    state.entities = state.entities.map(|entity| {
-        if entity.entity_type == EntityType::None {
-            entity
+impl Entity {
+    fn update_movement(&mut self) {
+        self.x = if self.dx < 0 {
+            self.x.saturating_sub(self.dx.saturating_abs() as u8)
         } else {
-            update_entity(entity)
+            self.x.saturating_add(self.dx as u8)
+        }.clamp(0, 160);
+        self.y = if self.dy < 0 {
+            self.y.saturating_sub(self.dy.saturating_abs() as u8)
+        } else {
+            self.y.saturating_add(self.dy as u8)
+        }.clamp(0, 160);
+    }
+
+    fn update(mut self) -> Entity {
+        self.age += 1;
+        match self.entity_type {
+            EntityType::None => {},
+            EntityType::Bullet => {
+                self.update_movement();
+                if self.age > 60 || entity_collides_with_wall(self) {
+                    self.entity_type = EntityType::None;
+                }
+            },
         }
-    });
-    state
+        self
+    }
 }
 
 fn update_game(state: GameState, gamepad: u8, last_gamepad: u8) -> State {
     let mut new_state = state;
     new_state.time += 1;
-    new_state = update_player(new_state, gamepad, last_gamepad);
-    new_state = update_entities(new_state);
+    new_state.update_player(gamepad, last_gamepad);
+    new_state.update_entities();
 
     Game(new_state)
 }
