@@ -264,12 +264,18 @@ fn entity_collides_with_wall(entity: &Entity) -> bool {
 
 fn collides(entity: &Entity, other_entity: &Entity) -> bool {
     entity.entity_type != EntityType::None && other_entity.entity_type != EntityType::None
-        && entity.x < other_entity.x + other_entity.size && entity.x + entity.size > other_entity.x && entity.y < other_entity.y + other_entity.size && entity.y + entity.size > other_entity.y
+    && entity.x - entity.size/2 < other_entity.x + other_entity.size/2
+    && entity.x + entity.size/2 > other_entity.x - other_entity.size/2
+    && entity.y - entity.size/2 < other_entity.y + other_entity.size/2
+    && entity.y + entity.size/2 > other_entity.y - other_entity.size/2
 }
 
 fn collides_with_player(entity: &Entity, state: &GameState) -> bool {
     entity.entity_type != EntityType::None
-        && entity.x < state.player_x + 8 && entity.x + entity.size > state.player_x && entity.y < state.player_y + 8 && entity.y + entity.size > state.player_y
+    && entity.x - entity.size/2 < state.player_x + 4
+    && entity.x + entity.size/2 > state.player_x - 4
+    && entity.y - entity.size/2 < state.player_y + 4
+    && entity.y + entity.size/2 > state.player_y - 4
 }
 
 impl Entity {
