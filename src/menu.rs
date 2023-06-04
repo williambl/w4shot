@@ -85,7 +85,7 @@ pub fn update_menu(state: MenuState, gamepad: u8, last_gamepad: u8) -> State {
 
 pub fn render_menu(state: MenuState) {
     unsafe { *DRAW_COLORS = 0x0003 }
-    text("w4-PLAT", 10, 10);
+    text("W4-SHOT", 10, 10);
     unsafe { *DRAW_COLORS = if state.selected == 0 { if state.pressed { 0x0002 } else { 0x0004 } } else { 0x0003 } }
     text("Play", 10, 30);
     unsafe { *DRAW_COLORS = 0x0003 }
