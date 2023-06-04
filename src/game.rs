@@ -66,11 +66,11 @@ struct ChangeRequests<'a> {
 impl GameState {
     pub fn new(difficulty: u8) -> Self {
         let mut state = Self {
-            player_x: 0,
-            player_y: 0,
+            player_x: 80,
+            player_y: 100,
             player_dx: 0,
             player_dy: 0,
-            player_health: 3,
+            player_health: 2,
             player_hurt_cooldown: 0,
             time: 0,
             difficulty,
@@ -201,7 +201,7 @@ impl GameState {
                     dx: 0,
                     dy: 0,
                     age: 0,
-                    entity_type: EntityType::BasicEnemy { seed: random as u8, aims: self.difficulty > 7 },
+                    entity_type: EntityType::BasicEnemy { seed: random as u8, aims: self.difficulty > 6 },
                 });
                 random = next_random(random);
             }
